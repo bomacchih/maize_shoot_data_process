@@ -1,0 +1,13 @@
+XGE202122_S5_subset_leaf_SCT<-SCTransform(XGE202122_S5_subset_leaf)
+XGE202122_S5_subset_leaf_SCT<-RunPCA(XGE202122_S5_subset_leaf_SCT, npcs=30, verbose = TRUE)
+XGE202122_S5_subset_leaf_SCT<-IntegrateLayers(XGE202122_S5_subset_leaf_SCT, method=CCAIntegration, normalizePath.method="SCT", new.reduction="integrated.cca", verbose=FALSE)
+XGE202122_S5_subset_leaf_SCT<-FindClusters(XGE202122_S5_subset_leaf_SCT, resolution=2, cluster.name="cca_clusters")
+XGE202122_S5_subset_leaf_SCT<-FindNeighbors(XGE202122_S5_subset_leaf_SCT, reduction="integrated.cca", dims=1:30)
+XGE202122_S5_subset_leaf_SCT<-FindClusters(XGE202122_S5_subset_leaf_SCT, resolution=2, cluster.name="cca_clusters")
+XGE202122_S5_subset_leaf_SCT<-RunUMAP(XGE202122_S5_subset_leaf_SCT, reduction="integrated.cca", dims=1:30, reduction.name="umap.cca")
+XGE202122_S5_subset_leaf_SCT$domains<-factor(XGE202122_S5_subset_leaf_SCT$domains, levels=c("SAM","P1_P2","P3","P4","P5","coleoptile","co_v"))
+XGE202122_S5_subset_leaf_SCT$sample<-factor(XGE202122_S5_subset_leaf_SCT$sample, levels=c("UL01","UL02","UL04","VR01","VR02","VR03","VR04","DQ01","DQ02","DQ03","DQ04","DQ06","DQ07","DQ08"))
+png(filename="S5_leaf_SCT_after_integration_harmony.png", width=9000, height=3000, res=300, pointsize=1)
+p2<-DimPlot(XGE202122_S5_subset_leaf_SCT, reduction="umap.harmony", group.by=c("sample", "domains", "harmony_clusters"))
+p2
+dev.off()
