@@ -1,2 +1,64 @@
 ＃ Exploring gene expression patterns using clustering methods
 # https://tavareshugo.github.io/data-carpentry-rnaseq/04b_rnaseq_clustering.html
+
+
+XGE202122_leaf_SCT_data<-AggregateExpression(XGE202122_S5_leaf_SCT_harmony, assay="SCT", slot="data")
+trans_cts_SCT_all<-as.data.frame(XGE202122_leaf_SCT_data$SCT)
+trans_cts_SCT_leaf<-trans_cts_SCT_all[,1:5]
+
+trans_cts_SCT_leaf$gene<-rownames(trans_cts_SCT_leaf)
+trans_cts_SCT_leaf <- trans_cts_SCT_leaf[, c(ncol(trans_cts_SCT_leaf), 1:(ncol(trans_cts_SCT_leaf) - 1))]
+
+trans_cts_SCT_leaf  <- trans_cts_SCT_leaf[rowSums(trans_cts_SCT_leaf[, (ncol(trans_cts_SCT_leaf)-4):ncol(trans_cts_SCT_leaf)]) != 0, ]
+
+trans_cts_SCT_leaf <- as.tibble(trans_cts_SCT_leaf)
+
+trans_cts_mean_SCT_leaf <- trans_cts_SCT_leaf %>% 
+ pivot_longer(cols = SAM:P5, names_to = "sample", values_to = "cts")  %>% 
+ full_join(sample_table, by=("sample")) %>% 
+ group_by(gene) %>% 
+ mutate(cts_scaled = (cts - mean(cts))/sd(cts)) %>% 
+ group_by(gene, domain) %>% 
+ summarise(mean_cts_scaled = mean(cts_scaled), nrep = n()) %>% 
+ ungroup()
+
+hclust_matrix_SCT_leaf<-trans_cts_SCT_leaf %>% select(-gene) %>% as.matrix()
+
+rownames(hclust_matrix_SCT_leaf)<-trans_cts_SCT_leaf$gene
+
+hclust_matrix_SCT_leaf <- hclust_matrix_SCT_leaf %>% 
+    t() %>% 
+    scale() %>% 
+    t()
+
+gene_dist_SCT_leaf <- dist(hclust_matrix_SCT_leaf)
+
+gene_hclust_SCT_leaf <- hclust(gene_dist_SCT_leaf, method = "complete")
+
+plot(gene_hclust_SCT_leaf, labels = FALSE)
+
+gene_cluster_SCT_leaf <- cutree(gene_hclust_SCT_leaf, k = 5) %>% 
+     enframe() %>% 
+    rename(gene = name, cluster = value)
+head(gene_cluster_SCT_leaf)
+
+
+trans_cts_cluster_SCT_leaf <- trans_cts_mean_SCT_leaf %>% 
+  inner_join(gene_cluster_SCT_leaf, by = "gene")
+
+head(trans_cts_cluster_SCT_leaf)
+
+trans_cts_cluster_SCT_leaf$domain <- factor(trans_cts_cluster_SCT_leaf$domain, 
+                                   levels = c("SAM", "P1-P2", "P3", "P4", "P5", "coleoptile","co-v"))
+
+trans_cts_cluster_SCT_averaged_all %>% 
+     ggplot(aes(domain, mean_cts_scaled)) +
+     geom_line(aes(group = gene), alpha = 0.3) +  # Plot individual gene lines with lower opacity
+     geom_line(stat = "summary", fun = "median", colour = "red", linewidth = 2.5, group = 1) +  # Highlight the median line
+     facet_grid(cols = vars(cluster)) +  # Create facets by cluster
+     theme_minimal() +  # Clean theme for better visualization
+     theme(
+       panel.grid.minor = element_blank(),  # Remove minor grid lines
+       panel.grid.major = element_line(colour = "grey80")  # Keep subtle major grid lines
+       axis.text.x = element_text(angle = 45, hjust = 1)
+     )
