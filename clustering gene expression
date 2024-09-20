@@ -17,15 +17,20 @@ trans_cts_SCT_leaf <- as.tibble(trans_cts_SCT_leaf)
 trans_cts_mean_SCT_leaf <- trans_cts_SCT_leaf %>% 
  pivot_longer(cols = SAM:P5, names_to = "sample", values_to = "cts")  %>% 
  full_join(sample_table, by=("sample")) %>% 
+ # filter(gene %in% candidate_genes) %>% 
  group_by(gene) %>% 
  mutate(cts_scaled = (cts - mean(cts))/sd(cts)) %>% 
  group_by(gene, domain) %>% 
  summarise(mean_cts_scaled = mean(cts_scaled), nrep = n()) %>% 
  ungroup()
 
-hclust_matrix_SCT_leaf<-trans_cts_SCT_leaf %>% select(-gene) %>% as.matrix()
+hclust_matrix_RNA_averaged_all_p005 <- trans_cts_RNA_averaged_all %>%
+    mutate(gene = rownames(.)) %>%
+    filter(gene %in% significant_markers_RNA_all) %>%
+    column_to_rownames(var = "gene") %>%  # Retain gene names as rownames
+    as.matrix()
 
-rownames(hclust_matrix_SCT_leaf)<-trans_cts_SCT_leaf$gene
+
 
 hclust_matrix_SCT_leaf <- hclust_matrix_SCT_leaf %>% 
     t() %>% 
@@ -36,7 +41,7 @@ gene_dist_SCT_leaf <- dist(hclust_matrix_SCT_leaf)
 
 gene_hclust_SCT_leaf <- hclust(gene_dist_SCT_leaf, method = "complete")
 
-plot(gene_hclust_SCT_leaf, labels = FALSE)
+plot(gene_hclust_SCT_leaf, labels = FALSE, main="title")
 
 gene_cluster_SCT_leaf <- cutree(gene_hclust_SCT_leaf, k = 5) %>% 
      enframe() %>% 
