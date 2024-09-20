@@ -1,0 +1,3 @@
+＃ Exploring gene expression patterns using clustering methods
+# https://tavareshugo.github.io/data-carpentry-rnaseq/04b_rnaseq_clustering.html
+XGE202122_S5_leaf_SCT_harmony<-NormalizeData(XGE202122_S5_leaf_SCT_harmony, scale.factor = median(XGE202122_S5_leaf_SCT_harmony$nCount_RNA), verbose=FALSE)
