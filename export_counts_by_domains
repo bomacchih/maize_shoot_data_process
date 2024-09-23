@@ -1,0 +1,5 @@
+# RNA counts/ normalized
+XGE202122_leaf_RNA_averaged<-AverageExpression(XGE202122_S5_leaf_SCT_harmony, assay="RNA", slot="data")
+
+# SCT/ normalized
+XGE202122_leaf_RNA_averaged<-AverageExpression(XGE202122_S5_leaf_SCT_harmony, assay="SCT", slot="data")
