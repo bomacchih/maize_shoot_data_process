@@ -102,6 +102,7 @@ y <- x %>%
 gene_cluster_info <- trans_cts_cluster_RNA_averaged_all%>% distinct(gene, cluster)
 
 y <- y %>% left_join(gene_cluster_info, by = "gene")
+
 y$distance_to_median <- apply(y, 1, function(row) {
     cluster_id <- row["cluster"]
     gene_data <- as.numeric(row[!(names(row) %in% c("gene", "cluster"))])  # Extract gene data
