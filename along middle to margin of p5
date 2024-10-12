@@ -1,0 +1,417 @@
+semi-supervised analysis of P5
+library(STutility)
+library(magick)
+library(dbscan)
+Load Seurat object
+
+se.P5 <- readRDS("../R_objects/VR03_aligned_P5labeled.rds")
+Export H&E
+
+outdir = "../P5_analysis/HE/"
+
+for (s in 1:4) {
+  jpeg(filename = paste0(outdir, "HE_", s, ".jpg"), width = 1500, height = 1538)
+  par(mar = c(0,0,0,0))
+  p <- FeatureOverlay(se, type = "raw", features = "labels", sampleids = s, show.sb = FALSE, pt.size = 5) & 
+    theme(legend.position = "none", plot.title = element_blank(), plot.subtitle = element_blank())
+  print(p)
+  #ImagePlot(se, indices = s, method = "raster", annotate = FALSE, type = "raw")
+  dev.off()
+}
+Import hand drawn outlines
+
+base.layers <- c("../P5_analysis/layers/layer1_section_1.png",
+                 "../P5_analysis/layers/layer2_section_1.png")
+
+xy.all <- do.call(rbind, lapply(seq_along(base.layers), function(i) {
+  im <- base.layers[[i]]
+  x <- image_read(im) %>% as.raster() 
+  xy <- as.data.frame(which(x == "#000000ff", arr.ind = T))
+  xy$layer <- i
+  return(xy)
+}))
+
+# Add a unique id for each spot
+xy.all$id <- paste0("id", 1:nrow(xy.all))
+rownames(xy.all) <- xy.all$id
+Plot outline to make sure that it is correctly placed
+
+# Get Staffli object holding spatial coordinates
+st.object <- GetStaffli(se.P5)
+
+# Generate spot colors
+spot.cols <- c("Section4" = "lightgray", "P5_left" = "red", "P5_right" = "blue")
+
+ds <- st.object@dims$`1`
+spots <- subset(st.object@meta.data, sample == "1")[, c("pixel_x", "pixel_y")]
+spots <- spots*(1538/2000)
+spots$label = se.P5@meta.data[rownames(spots), "labels"]
+spots$barcode <- rownames(spots)
+plot(xy.all[, 2:1], xlim = c(0, 1500), ylim = c(1538, 0), cex = 0.1, axes = FALSE, col = xy.all$layer)
+points(spots, cex=0.3, pch=19, col = spot.cols[spots$label])
+
+
+This far we have defined points outlining P5 regions but the points are not ordered. We want to order the points from proximal to distal (or vice versa) first to define the new coordinate system.
+
+One way to do this is to define a k nearest neighbor graph, define the endpoints within the graph and then order points along the shortest path spanning from end point to endpoint. First, let’s define a kNN graph with k = 5 and convert the graph into an igraph object.
+
+groups <- c("P5_left", "P5_right")
+
+end.points.list <- setNames(lapply(seq_along(groups), function(i) {
+  
+  # xy subset
+  xy.all.subset <- subset(xy.all, layer == i)
+  
+  # Find k nearest neighbors
+  y <- dbscan::kNN(x = xy.all.subset[, 1:2], k = 5, sort = FALSE)
+  
+  # Create a data.frame in long format specifying the connections with their associated distances
+  adj <- rbind(data.frame(from = xy.all.subset$id, to = xy.all.subset$id[y$id[, 1]], d = y$dist[, 1]),
+               data.frame(from = xy.all.subset$id, to = xy.all.subset$id[y$id[, 2]], d = y$dist[, 2]),
+               data.frame(from = xy.all.subset$id, to = xy.all.subset$id[y$id[, 3]], d = y$dist[, 3]),
+               data.frame(from = xy.all.subset$id, to = xy.all.subset$id[y$id[, 4]], d = y$dist[, 4]),
+               data.frame(from = xy.all.subset$id, to = xy.all.subset$id[y$id[, 5]], d = y$dist[, 5]))
+  
+  # Convert data.frame into an adjecency matrix
+  adj.mat <- reshape2::acast(data = adj, formula = from ~ to, value.var = "d", fill = 0)
+  
+  # Convert adjacency matrix into igraph object
+  ig <- igraph::graph_from_adjacency_matrix(adj.mat)
+  
+  # Next, we need to find the end points of the graph. 
+  # The end points should have the highest average distance to its neighbors
+  end.points <- names(sort(rowMeans(y$dist), decreasing = TRUE))[1:2]
+  end.points <- end.points[order(xy.all.subset[end.points, "col"], decreasing = FALSE)]
+  
+  return(list(end.points, ig))
+}), nm = groups)
+xy.all$hl <- ifelse(xy.all$id %in% unlist(sapply(end.points.list, function(x) x[[1]])), xy.all$id, "")
+p <- ggplot() +
+  geom_point(data = xy.all, aes(col, 2000 - row), size = 0.5) +
+  geom_text(data = xy.all, aes(col, 2000 - row, label = hl)) +
+  theme_void()
+
+p
+
+
+With the graph and the end points defined, we can now define a “shortest path” and reorder the points.
+
+reordered.points <- do.call(rbind, lapply(seq_along(end.points.list), function(i) {
+  end.points <- end.points.list[[i]][[1]]
+  ig <- end.points.list[[i]][[2]]
+  print(end.points)
+  
+  sp.full <- igraph::shortest_paths(graph = ig, 
+                          from = end.points[1], 
+                          to = end.points[2])
+  
+  print(length(sp.full$vpath[[1]]))
+
+  xy.ordered <- xy.all[names(sp.full$vpath[[1]]), ]
+  xy.ordered$ord <- 1:nrow(xy.ordered)
+  return(xy.ordered)
+}))
+## [1] "id167" "id463"
+## [1] 190
+## [1] "id464" "id698"
+## [1] 151
+p <- ggplot() +
+  geom_point(data = reordered.points, aes(col, 2000 - row)) +
+  geom_label(data = reordered.points %>% dplyr::group_by(layer) %>% dplyr::slice(which(dplyr::row_number() %% 20 == 1)), 
+             aes(col, 2000 - row, label = ord, fill = factor(layer))) +
+  theme_void() +
+  labs(fill = "layer")
+p
+
+
+If we calculate pairwise distances between spots and outline we can quickly find the minimum distance from a spot to the closest baseline. The issue is that many of the spots will be assigned to the wrong layers so we need to figure out a way to deal with this.
+
+# Calculate pairwise distances
+ggs <- do.call(rbind, lapply(c("P5_left", "P5_right"), function(i) {
+  spots.subset <- subset(spots, label %in% i)
+  set1 = spots.subset[, c("pixel_x", "pixel_y")]
+  set2 = reordered.points[, 2:1]
+  which.mindists <- apply(set1, 1, function(x) {
+    which.min(sqrt(colSums((t(set2) - x)^2)))
+  })
+  mindists <- apply(set1, 1, function(x) {
+    min(sqrt(colSums((t(set2) - x)^2)))
+  })
+  gg <- cbind(reordered.points[which.mindists, ], spots.subset, dist = mindists)
+  return(gg)
+}))
+
+
+ggplot() +
+  geom_segment(data = ggs, aes(x = col, xend = pixel_x, y = row, yend = pixel_y, color = label)) +
+  geom_point(data = ggs, aes(x = pixel_x, y = pixel_y, color = label)) +
+  scale_y_reverse()
+
+
+Now we have our new axes given by the ord column. We can project the ord values spatially to check whether they follow the outlines.
+
+ggplot() +
+  geom_point(data = ggs, aes(x = pixel_x, y = pixel_y, color = ord), size = 5) +
+  scale_y_reverse() +
+  scale_color_viridis_c() +
+  facet_grid(~layer, labeller = labeller(layer = setNames(groups, nm = 1:2)))
+
+
+Now we can use our new axis to plot gene expression values on it. Let’s run a simple normalization and feature selection workflow to identify genes with high variability in P5. Below I only used spots labeled as “P5_left” or “P5_right”.
+
+se.P5.only <- se.P5 %>% 
+  SubsetSTData(expression = labels %in% groups) %>%
+  NormalizeData(verbose = FALSE) %>%
+  ScaleData(verbose = FALSE) %>%
+  FindVariableFeatures(verbose = FALSE) %>%
+  RunPCA()
+## PC_ 1 
+## Positive:  Zm00001eb299450, Zm00001eb272050, Zm00001eb353970, Zm00001eb163910, Zm00001eb406130, Zm00001eb267030, Zm00001eb137410, Zm00001eb406100, Zm00001eb221000, Zm00001eb080380 
+##     Zm00001eb091920, Zm00001eb101770, Zm00001eb137390, Zm00001eb413630, Zm00001eb137480, Zm00001eb355990, Zm00001eb245610, Zm00001eb245620, Zm00001eb404790, Zm00001eb002620 
+##     Zm00001eb333780, Zm00001eb006020, Zm00001eb136750, Zm00001eb167690, Zm00001eb406570, Zm00001eb355980, Zm00001eb164750, Zm00001eb013430, Zm00001eb404780, Zm00001eb306400 
+## Negative:  Zm00001eb074530, Zm00001eb170390, Zm00001eb265890, Zm00001eb228690, Zm00001eb052270, Zm00001eb188180, Zm00001eb188030, Zm00001eb385810, Zm00001eb201340, Zm00001eb050660 
+##     Zm00001eb165950, Zm00001eb271900, Zm00001eb159850, Zm00001eb049330, Zm00001eb009490, Zm00001eb241860, Zm00001eb148440, Zm00001eb256740, Zm00001eb136060, Zm00001eb163000 
+##     Zm00001eb052470, Zm00001eb279240, Zm00001eb338740, Zm00001eb041050, Zm00001eb254290, Zm00001eb161170, Zm00001eb278640, Zm00001eb253390, Zm00001eb122960, Zm00001eb403330 
+## PC_ 2 
+## Positive:  Zm00001eb091360, Zm00001eb097070, Zm00001eb130940, Zm00001eb129030, Zm00001eb375040, Zm00001eb092850, Zm00001eb144900, Zm00001eb235450, Zm00001eb002780, Zm00001eb057870 
+##     Zm00001eb298980, Zm00001eb023730, Zm00001eb061740, Zm00001eb342070, Zm00001eb061750, Zm00001eb083400, Zm00001eb382060, Zm00001eb249940, Zm00001eb015890, Zm00001eb333580 
+##     Zm00001eb400310, Zm00001eb129330, Zm00001eb043820, Zm00001eb304290, Zm00001eb268890, Zm00001eb002790, Zm00001eb136630, Zm00001eb384970, Zm00001eb139660, Zm00001eb136500 
+## Negative:  Zm00001eb167710, Zm00001eb419390, Zm00001eb265890, Zm00001eb411380, Zm00001eb167690, Zm00001eb267030, Zm00001eb157880, Zm00001eb101770, Zm00001eb137280, Zm00001eb016200 
+##     Zm00001eb333330, Zm00001eb079730, Zm00001eb418060, Zm00001eb332050, Zm00001eb104470, Zm00001eb013990, Zm00001eb410440, Zm00001eb308610, Zm00001eb069160, Zm00001eb195210 
+##     Zm00001eb265900, Zm00001eb418460, Zm00001eb116230, Zm00001eb356160, Zm00001eb141080, Zm00001eb417150, Zm00001eb400630, Zm00001eb369350, Zm00001eb148580, Zm00001eb156130 
+## PC_ 3 
+## Positive:  Zm00001eb205550, Zm00001eb163000, Zm00001eb136720, Zm00001eb266490, Zm00001eb385810, Zm00001eb235450, Zm00001eb155680, Zm00001eb315990, Zm00001eb009490, Zm00001eb026690 
+##     Zm00001eb122220, Zm00001eb097070, Zm00001eb179690, Zm00001eb002780, Zm00001eb342070, Zm00001eb337970, Zm00001eb050120, Zm00001eb106460, Zm00001eb353110, Zm00001eb363120 
+##     Zm00001eb388910, Zm00001eb061740, Zm00001eb228780, Zm00001eb237260, Zm00001eb347080, Zm00001eb087230, Zm00001eb321220, Zm00001eb061250, Zm00001eb230930, Zm00001eb029220 
+## Negative:  Zm00001eb096930, Zm00001eb330880, Zm00001eb247810, Zm00001eb159850, Zm00001eb265900, Zm00001eb023570, Zm00001eb233880, Zm00001eb165560, Zm00001eb165580, Zm00001eb016200 
+##     Zm00001eb003730, Zm00001eb165550, Zm00001eb074210, Zm00001eb265890, Zm00001eb387070, Zm00001eb096680, Zm00001eb166850, Zm00001eb292680, Zm00001eb194190, Zm00001eb006530 
+##     Zm00001eb288100, Zm00001eb329730, Zm00001eb165620, Zm00001eb230750, Zm00001eb120200, Zm00001eb106160, Zm00001eb283880, Zm00001eb094610, Zm00001eb370430, Zm00001eb283520 
+## PC_ 4 
+## Positive:  Zm00001eb154550, Zm00001eb419390, Zm00001eb252850, Zm00001eb268360, Zm00001eb411380, Zm00001eb104470, Zm00001eb296090, Zm00001eb006530, Zm00001eb337300, Zm00001eb091360 
+##     Zm00001eb083680, Zm00001eb167690, Zm00001eb159280, Zm00001eb286540, Zm00001eb165560, Zm00001eb141080, Zm00001eb023570, Zm00001eb373050, Zm00001eb083610, Zm00001eb039040 
+##     Zm00001eb185880, Zm00001eb175860, Zm00001eb139570, Zm00001eb090910, Zm00001eb164610, Zm00001eb321960, Zm00001eb003730, Zm00001eb245610, Zm00001eb342500, Zm00001eb116960 
+## Negative:  Zm00001eb149490, Zm00001eb221130, Zm00001eb120700, Zm00001eb292840, Zm00001eb395760, Zm00001eb417150, Zm00001eb191580, Zm00001eb371370, Zm00001eb041970, Zm00001eb036750 
+##     Zm00001eb154370, Zm00001eb184830, Zm00001eb053160, Zm00001eb278420, Zm00001eb122470, Zm00001eb311010, Zm00001eb054700, Zm00001eb124340, Zm00001eb239170, Zm00001eb010990 
+##     Zm00001eb307070, Zm00001eb288310, Zm00001eb127460, Zm00001eb006020, Zm00001eb410440, Zm00001eb323490, Zm00001eb333330, Zm00001eb005130, Zm00001eb068860, Zm00001eb291190 
+## PC_ 5 
+## Positive:  Zm00001eb083610, Zm00001eb287600, Zm00001eb266370, Zm00001eb090910, Zm00001eb267050, Zm00001eb305600, Zm00001eb318750, Zm00001eb258520, Zm00001eb421950, Zm00001eb083840 
+##     Zm00001eb320070, Zm00001eb342500, Zm00001eb175860, Zm00001eb362730, Zm00001eb025830, Zm00001eb313250, Zm00001eb344850, Zm00001eb243730, Zm00001eb083790, Zm00001eb401230 
+##     Zm00001eb091360, Zm00001eb128330, Zm00001eb036880, Zm00001eb408210, Zm00001eb159100, Zm00001eb043230, Zm00001eb250230, Zm00001eb250950, Zm00001eb178180, Zm00001eb294870 
+## Negative:  Zm00001eb399910, Zm00001eb418860, Zm00001eb365730, Zm00001eb173060, Zm00001eb422090, Zm00001eb041050, Zm00001eb362070, Zm00001eb205550, Zm00001eb403330, Zm00001eb130940 
+##     Zm00001eb312000, Zm00001eb292680, Zm00001eb144800, Zm00001eb298230, Zm00001eb154550, Zm00001eb235450, Zm00001eb252230, Zm00001eb075520, Zm00001eb048920, Zm00001eb122220 
+##     Zm00001eb188180, Zm00001eb136500, Zm00001eb065810, Zm00001eb129330, Zm00001eb060390, Zm00001eb347080, Zm00001eb249600, Zm00001eb369380, Zm00001eb074530, Zm00001eb002790
+I don’t know what the best way is to select markers that vary along the new axis, but one way of doing it could be to set up a linear regression model for each gene and look for genes that have show an increase or decrease with distance.
+
+Below I just selected the top 3 genes (positive/negative) from the first principal component.
+
+ST.FeaturePlot(se.P5.only, features = "Zm00001eb299450", ncol = 2, show.sb = FALSE, label.by = "sample_id")
+
+
+First we just need to merge the expression data four our selected markers with our ggs object that holds information about relative ditances aong our outlines of the P5.
+
+selected.features <- c("Zm00001eb299450", "Zm00001eb272050", "Zm00001eb353970", 
+                       "Zm00001eb170390", "Zm00001eb265890", "Zm00001eb074530")
+
+merged.data <- cbind(ggs, t(as.matrix(GetAssayData(se.P5.only, slot = "data", assay = "RNA")[selected.features, ggs$barcode])))
+merged.data.molten <- reshape2::melt(merged.data, measure.vars = selected.features)
+Plot expression on new axis. Not a super clear trend for these markers, but the first three genes appear to decrease with distance.
+
+ggplot(merged.data.molten, aes(ord, value)) +
+  geom_point() +
+  geom_smooth() +
+  facet_grid(variable ~ layer, labeller = labeller(layer = setNames(groups, nm = 1:2))) +
+  labs(y = "normalized expression")
+## `geom_smooth()` using method = 'loess' and formula 'y ~ x'
+
+
+Date
+date()
+## [1] "Wed May  4 15:50:54 2022"
+Session
+devtools::session_info()
+## ─ Session info ───────────────────────────────────────────────────────────────
+##  setting  value                       
+##  version  R version 4.0.3 (2020-10-10)
+##  os       macOS Big Sur 10.16         
+##  system   x86_64, darwin13.4.0        
+##  ui       unknown                     
+##  language (EN)                        
+##  collate  en_US.UTF-8                 
+##  ctype    en_US.UTF-8                 
+##  tz       Europe/Stockholm            
+##  date     2022-05-04                  
+## 
+## ─ Packages ───────────────────────────────────────────────────────────────────
+##  package          * version  date       lib source                           
+##  abind              1.4-5    2016-07-21 [1] CRAN (R 4.0.0)                   
+##  akima              0.6-2.1  2020-05-30 [1] CRAN (R 4.0.3)                   
+##  assertthat         0.2.1    2019-03-21 [1] CRAN (R 4.0.0)                   
+##  bmp                0.3      2017-09-11 [1] CRAN (R 4.0.3)                   
+##  boot               1.3-27   2021-02-12 [1] CRAN (R 4.0.3)                   
+##  bslib              0.2.4    2021-01-25 [1] CRAN (R 4.0.3)                   
+##  cachem             1.0.4    2021-02-13 [1] CRAN (R 4.0.3)                   
+##  callr              3.7.0    2021-04-20 [1] CRAN (R 4.0.3)                   
+##  class              7.3-18   2021-01-24 [1] CRAN (R 4.0.3)                   
+##  classInt           0.4-3    2020-04-07 [1] CRAN (R 4.0.3)                   
+##  cli                3.1.1    2022-01-20 [1] CRAN (R 4.0.3)                   
+##  cluster            2.1.1    2021-02-14 [1] CRAN (R 4.0.3)                   
+##  coda               0.19-4   2020-09-30 [1] CRAN (R 4.0.2)                   
+##  codetools          0.2-18   2020-11-04 [1] CRAN (R 4.0.3)                   
+##  colorRamps         2.3      2012-10-29 [1] CRAN (R 4.0.3)                   
+##  colorspace         2.0-0    2020-11-11 [1] CRAN (R 4.0.3)                   
+##  cowplot            1.1.1    2020-12-30 [1] CRAN (R 4.0.3)                   
+##  crayon             1.4.1    2021-02-08 [1] CRAN (R 4.0.3)                   
+##  crosstalk          1.1.1    2021-01-12 [1] CRAN (R 4.0.3)                   
+##  data.table         1.14.0   2021-02-21 [1] CRAN (R 4.0.3)                   
+##  DBI                1.1.1    2021-01-15 [1] CRAN (R 4.0.3)                   
+##  dbscan           * 1.1-6    2021-02-26 [1] CRAN (R 4.0.3)                   
+##  deldir             1.0-6    2021-10-23 [1] CRAN (R 4.0.3)                   
+##  desc               1.3.0    2021-03-05 [1] CRAN (R 4.0.3)                   
+##  devtools           2.4.0    2021-04-07 [1] CRAN (R 4.0.3)                   
+##  digest             0.6.27   2020-10-24 [1] CRAN (R 4.0.3)                   
+##  doParallel         1.0.16   2020-10-16 [1] CRAN (R 4.0.3)                   
+##  dplyr              1.0.8    2022-02-08 [1] CRAN (R 4.0.3)                   
+##  e1071              1.7-6    2021-03-18 [1] CRAN (R 4.0.3)                   
+##  ellipsis           0.3.2    2021-04-29 [1] CRAN (R 4.0.3)                   
+##  evaluate           0.14     2019-05-28 [1] CRAN (R 4.0.0)                   
+##  expm               0.999-6  2021-01-13 [1] CRAN (R 4.0.3)                   
+##  fansi              0.4.2    2021-01-15 [1] CRAN (R 4.0.3)                   
+##  farver             2.1.0    2021-02-28 [1] CRAN (R 4.0.3)                   
+##  fastmap            1.1.0    2021-01-25 [1] CRAN (R 4.0.3)                   
+##  fitdistrplus       1.1-3    2020-12-05 [1] CRAN (R 4.0.3)                   
+##  foreach            1.5.1    2020-10-15 [1] CRAN (R 4.0.3)                   
+##  fs                 1.5.0    2020-07-31 [1] CRAN (R 4.0.2)                   
+##  future             1.21.0   2020-12-10 [1] CRAN (R 4.0.3)                   
+##  future.apply       1.7.0    2021-01-04 [1] CRAN (R 4.0.3)                   
+##  gdata              2.18.0   2017-06-06 [1] CRAN (R 4.0.0)                   
+##  gdtools            0.2.3    2021-01-06 [1] CRAN (R 4.0.3)                   
+##  generics           0.1.0    2020-10-31 [1] CRAN (R 4.0.3)                   
+##  ggiraph            0.7.8    2020-07-01 [1] CRAN (R 4.0.3)                   
+##  ggplot2          * 3.3.5    2021-06-25 [1] CRAN (R 4.0.3)                   
+##  ggrepel            0.9.1    2021-01-15 [1] CRAN (R 4.0.3)                   
+##  ggridges           0.5.3    2021-01-08 [1] CRAN (R 4.0.3)                   
+##  globals            0.14.0   2020-11-22 [1] CRAN (R 4.0.3)                   
+##  glue               1.6.2    2022-02-24 [1] CRAN (R 4.0.3)                   
+##  gmodels            2.18.1   2018-06-25 [1] CRAN (R 4.0.0)                   
+##  goftest            1.2-2    2019-12-02 [1] CRAN (R 4.0.0)                   
+##  gridExtra          2.3      2017-09-09 [1] CRAN (R 4.0.0)                   
+##  gtable             0.3.0    2019-03-25 [1] CRAN (R 4.0.0)                   
+##  gtools             3.8.2    2020-03-31 [1] CRAN (R 4.0.0)                   
+##  highr              0.8      2019-03-20 [1] CRAN (R 4.0.0)                   
+##  htmltools          0.5.2    2021-08-25 [1] CRAN (R 4.0.3)                   
+##  htmlwidgets        1.5.3    2020-12-10 [1] CRAN (R 4.0.3)                   
+##  httpuv             1.5.5    2021-01-13 [1] CRAN (R 4.0.3)                   
+##  httr               1.4.2    2020-07-20 [1] CRAN (R 4.0.2)                   
+##  ica                1.0-2    2018-05-24 [1] CRAN (R 4.0.0)                   
+##  igraph             1.2.11   2022-01-04 [1] CRAN (R 4.0.3)                   
+##  imager             0.42.8   2021-03-15 [1] CRAN (R 4.0.3)                   
+##  irlba              2.3.3    2019-02-05 [1] CRAN (R 4.0.0)                   
+##  iterators          1.0.13   2020-10-15 [1] CRAN (R 4.0.3)                   
+##  jpeg               0.1-8.1  2019-10-24 [1] CRAN (R 4.0.3)                   
+##  jquerylib          0.1.3    2020-12-17 [1] CRAN (R 4.0.3)                   
+##  jsonlite           1.7.2    2020-12-09 [1] CRAN (R 4.0.3)                   
+##  KernSmooth         2.23-18  2020-10-29 [1] CRAN (R 4.0.3)                   
+##  knitr              1.31     2021-01-27 [1] CRAN (R 4.0.3)                   
+##  labeling           0.4.2    2020-10-20 [1] CRAN (R 4.0.3)                   
+##  later              1.1.0.1  2020-06-05 [1] CRAN (R 4.0.0)                   
+##  lattice            0.20-41  2020-04-02 [1] CRAN (R 4.0.3)                   
+##  lazyeval           0.2.2    2019-03-15 [1] CRAN (R 4.0.0)                   
+##  LearnBayes         2.15.1   2018-03-18 [1] CRAN (R 4.0.0)                   
+##  leiden             0.3.7    2021-01-26 [1] CRAN (R 4.0.3)                   
+##  lifecycle          1.0.1    2021-09-24 [1] CRAN (R 4.0.3)                   
+##  listenv            0.8.0    2019-12-05 [1] CRAN (R 4.0.0)                   
+##  lmtest             0.9-38   2020-09-09 [1] CRAN (R 4.0.3)                   
+##  magick           * 2.7.2    2021-05-02 [1] CRAN (R 4.0.3)                   
+##  magrittr           2.0.1    2020-11-17 [1] CRAN (R 4.0.3)                   
+##  manipulateWidget   0.11.0   2021-05-31 [1] CRAN (R 4.0.3)                   
+##  MASS               7.3-53.1 2021-02-12 [1] CRAN (R 4.0.3)                   
+##  Matrix             1.3-2    2021-01-06 [1] CRAN (R 4.0.3)                   
+##  matrixStats        0.58.0   2021-01-29 [1] CRAN (R 4.0.3)                   
+##  memoise            2.0.0    2021-01-26 [1] CRAN (R 4.0.3)                   
+##  mgcv               1.8-34   2021-02-16 [1] CRAN (R 4.0.3)                   
+##  mime               0.10     2021-02-13 [1] CRAN (R 4.0.3)                   
+##  miniUI             0.1.1.1  2018-05-18 [1] CRAN (R 4.0.0)                   
+##  Morpho             2.8      2020-03-09 [1] CRAN (R 4.0.3)                   
+##  munsell            0.5.0    2018-06-12 [1] CRAN (R 4.0.0)                   
+##  nlme               3.1-152  2021-02-04 [1] CRAN (R 4.0.3)                   
+##  parallelly         1.25.0   2021-04-30 [1] CRAN (R 4.0.3)                   
+##  patchwork          1.1.1    2020-12-17 [1] CRAN (R 4.0.3)                   
+##  pbapply            1.4-3    2020-08-18 [1] CRAN (R 4.0.2)                   
+##  pillar             1.7.0    2022-02-01 [1] CRAN (R 4.0.3)                   
+##  pkgbuild           1.2.0    2020-12-15 [1] CRAN (R 4.0.3)                   
+##  pkgconfig          2.0.3    2019-09-22 [1] CRAN (R 4.0.0)                   
+##  pkgload            1.2.1    2021-04-06 [1] CRAN (R 4.0.3)                   
+##  plotly             4.9.3    2021-01-10 [1] CRAN (R 4.0.3)                   
+##  plyr               1.8.6    2020-03-03 [1] CRAN (R 4.0.0)                   
+##  png                0.1-7    2013-12-03 [1] CRAN (R 4.0.0)                   
+##  polyclip           1.10-0   2019-03-14 [1] CRAN (R 4.0.0)                   
+##  prettyunits        1.1.1    2020-01-24 [1] CRAN (R 4.0.0)                   
+##  processx           3.5.1    2021-04-04 [1] CRAN (R 4.0.3)                   
+##  promises           1.2.0.1  2021-02-11 [1] CRAN (R 4.0.3)                   
+##  proxy              0.4-25   2021-03-05 [1] CRAN (R 4.0.3)                   
+##  ps                 1.6.0    2021-02-28 [1] CRAN (R 4.0.3)                   
+##  purrr              0.3.4    2020-04-17 [1] CRAN (R 4.0.0)                   
+##  R6                 2.5.0    2020-10-28 [1] CRAN (R 4.0.3)                   
+##  RANN               2.6.1    2019-01-08 [1] CRAN (R 4.0.0)                   
+##  raster             3.4-10   2021-05-03 [1] CRAN (R 4.0.3)                   
+##  RColorBrewer       1.1-2    2014-12-07 [1] CRAN (R 4.0.3)                   
+##  Rcpp               1.0.8.3  2022-03-17 [1] CRAN (R 4.0.3)                   
+##  RcppAnnoy          0.0.18   2020-12-15 [1] CRAN (R 4.0.3)                   
+##  readbitmap         0.1.5    2018-06-27 [1] CRAN (R 4.0.3)                   
+##  remotes            2.3.0    2021-04-01 [1] CRAN (R 4.0.3)                   
+##  reshape2           1.4.4    2020-04-09 [1] CRAN (R 4.0.0)                   
+##  reticulate         1.18     2020-10-25 [1] CRAN (R 4.0.3)                   
+##  rgl                0.105.22 2021-03-04 [1] CRAN (R 4.0.3)                   
+##  rlang              1.0.1    2022-02-03 [1] CRAN (R 4.0.3)                   
+##  rmarkdown          2.14     2022-04-25 [1] CRAN (R 4.0.3)                   
+##  ROCR               1.0-11   2020-05-02 [1] CRAN (R 4.0.0)                   
+##  rpart              4.1-15   2019-04-12 [1] CRAN (R 4.0.3)                   
+##  rprojroot          2.0.2    2020-11-15 [1] CRAN (R 4.0.3)                   
+##  rstudioapi         0.13     2020-11-12 [1] CRAN (R 4.0.3)                   
+##  Rtsne              0.15     2018-11-10 [1] CRAN (R 4.0.0)                   
+##  Rvcg               0.19.2   2021-01-11 [1] CRAN (R 4.0.3)                   
+##  sass               0.3.1    2021-01-24 [1] CRAN (R 4.0.3)                   
+##  scales             1.1.1    2020-05-11 [1] CRAN (R 4.0.3)                   
+##  scattermore        0.7      2020-11-24 [1] CRAN (R 4.0.3)                   
+##  sctransform        0.3.2    2020-12-16 [1] CRAN (R 4.0.3)                   
+##  sessioninfo        1.1.1    2018-11-05 [1] CRAN (R 4.0.0)                   
+##  Seurat           * 4.0.2    2021-06-21 [1] Github (lldelisle/seurat@af2925c)
+##  SeuratObject     * 4.0.0    2021-01-15 [1] CRAN (R 4.0.3)                   
+##  sf                 0.9-8    2021-03-17 [1] CRAN (R 4.0.3)                   
+##  shiny              1.6.0    2021-01-25 [1] CRAN (R 4.0.3)                   
+##  shinyjs            2.0.0    2020-09-09 [1] CRAN (R 4.0.3)                   
+##  sp                 1.4-5    2021-01-10 [1] CRAN (R 4.0.3)                   
+##  spatstat.core      2.3-0    2021-07-16 [1] CRAN (R 4.0.3)                   
+##  spatstat.data      2.1-0    2021-03-21 [1] CRAN (R 4.0.3)                   
+##  spatstat.geom      2.4-0    2022-03-29 [1] CRAN (R 4.0.3)                   
+##  spatstat.sparse    2.0-0    2021-03-16 [1] CRAN (R 4.0.3)                   
+##  spatstat.utils     2.2-0    2021-06-14 [1] CRAN (R 4.0.3)                   
+##  spData             0.3.8    2020-07-03 [1] CRAN (R 4.0.2)                   
+##  spdep              1.1-7    2021-04-03 [1] CRAN (R 4.0.3)                   
+##  stringi            1.5.3    2020-09-09 [1] CRAN (R 4.0.3)                   
+##  stringr            1.4.0    2019-02-10 [1] CRAN (R 4.0.0)                   
+##  STutility        * 0.1.0    2022-04-26 [1] local                            
+##  survival           3.2-10   2021-03-16 [1] CRAN (R 4.0.3)                   
+##  systemfonts        1.0.1    2021-02-09 [1] CRAN (R 4.0.3)                   
+##  tensor             1.5      2012-05-05 [1] CRAN (R 4.0.0)                   
+##  testthat           3.0.2    2021-02-14 [1] CRAN (R 4.0.3)                   
+##  tibble             3.1.6    2021-11-07 [1] CRAN (R 4.0.3)                   
+##  tidyr              1.2.0    2022-02-01 [1] CRAN (R 4.0.3)                   
+##  tidyselect         1.1.1    2021-04-30 [1] CRAN (R 4.0.3)                   
+##  tiff               0.1-8    2021-03-31 [1] CRAN (R 4.0.3)                   
+##  units              0.7-1    2021-03-16 [1] CRAN (R 4.0.3)                   
+##  usethis            2.0.1    2021-02-10 [1] CRAN (R 4.0.2)                   
+##  utf8               1.2.1    2021-03-12 [1] CRAN (R 4.0.3)                   
+##  uuid               0.1-4    2020-02-26 [1] CRAN (R 4.0.0)                   
+##  uwot               0.1.10   2020-12-15 [1] CRAN (R 4.0.3)                   
+##  vctrs              0.3.8    2021-04-29 [1] CRAN (R 4.0.3)                   
+##  viridis            0.6.2    2021-10-13 [1] CRAN (R 4.0.3)                   
+##  viridisLite        0.4.0    2021-04-13 [1] CRAN (R 4.0.3)                   
+##  withr              2.4.1    2021-01-26 [1] CRAN (R 4.0.3)                   
+##  xfun               0.30     2022-03-02 [1] CRAN (R 4.0.3)                   
+##  xtable             1.8-4    2019-04-21 [1] CRAN (R 4.0.0)                   
+##  yaml               2.2.1    2020-02-01 [1] CRAN (R 4.0.3)                   
+##  zeallot            0.1.0    2018-01-28 [1] CRAN (R 4.0.3)                   
+##  zoo                1.8-9    2021-03-09 [1] CRAN (R 4.0.3)                   
+## 
+## [1] /Users/ludviglarsson/anaconda3/envs/R4.0/lib/R/library
