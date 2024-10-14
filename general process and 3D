@@ -1,0 +1,210 @@
+library(Seurat)
+library(magrittr)
+library(imager)
+library(EBImage)
+library(STutility)
+library(magrittr)
+library(dplyr)
+library(harmony)
+samples <- "c:/Users/li-wu/Desktop/STU_samples/crop_test/VR03_1/filtered_feature_bc_matrix.h5"
+imgs <- "c:/Users/li-wu/Desktop/STU_samples/crop_test/VR03_1/tissue_hires_image.png"
+spotfiles <- "c:/Users/li-wu/Desktop/STU_samples/crop_test/VR03_1/scalefactors_json.json"
+json <- "c:/Users/li-wu/Desktop/STU_samples/crop_test/VR03_1/scalefactors_json.json"
+
+infoTable <- data.frame(samples, imgs, spotfiles, json)
+
+se <- InputFromTable(infoTable)
+Manual selection
+Here I just manually anntoated the four section as group1-group4.
+
+se <- ManualAnnotation(se)
+Find “crop windows”
+We can define the “crop windows” by extracting the min/max x and y coordinate values for eachs section.
+
+coords <- GetStaffli(se)@meta.data[, c("pixel_x", "pixel_y")]
+coords$group <- se$labels
+crop.geoms <- setNames(lapply(paste0("group", 1:4), function(grp) {
+  coords.subset <- subset(coords, group %in% grp)
+  minxy <- apply(coords.subset[, c("pixel_x", "pixel_y")], 2, range)
+  minxy[1, ] <- minxy[1, ] - 50
+  minxy[2, ] <- minxy[2, ] + 50
+  minxy <- round(minxy)
+  wh <- apply(minxy, 2, diff)
+  geom <- paste0(wh[1], "x", wh[2], "+", minxy[1, 1], "+", minxy[1, 2])
+}), nm = c("1", "1", "1", "1"))
+Crop data
+Here’s the actual cropping step. If you want to use the HE image in higher resolution you will need to use the raw HE images, or at least a version of the HE images which has a higher resolution than “tissue_hires_image.png” from the spaceranger output folder. You can check the “crop_data” tutorial on the STutility web site if you’re interested.
+
+se <- LoadImages(se, time.resolve = FALSE)
+
+# Here I decided to crop each section at the time and then merge the data
+# this way we can easily remove spots that are from another section
+se.cropped.list <- lapply(seq_along(crop.geoms), function(i) {
+  se.cropped <- CropImages(se, crop.geometry.list = crop.geoms[i], xdim = 500, time.resolve = FALSE, verbose = FALSE)
+  se.cropped <- SubsetSTData(se.cropped, spots = rownames(subset(se.cropped[[]], labels %in% paste0("group", i))))
+})
+
+se.merged <- MergeSTData(x = se.cropped.list[[1]], y = se.cropped.list[2:4])
+Mask images
+se.masked <- readRDS("../R_objects/se.masked")
+msk.fkn <- function(im) {
+  im <- imager::grayscale(im)
+  im <- imager::isoblur(im, 3)
+  out <- imager::threshold(im)
+  out <- !out
+  out <- imager::fill(out, 5)
+  out <- EBImage::as.Image(out)
+  out <- EBImage::fillHull(out)
+  out <- imager::as.pixset(out)
+  return(out)
+}
+
+se.masked <- MaskImages(se.merged, custom.msk.fkn = msk.fkn, verbose = TRUE)
+Align images
+here I aligned the sections manually. I have no idea if this was done correctly :-)
+
+se.masked <- ManualAlignImages(se.masked)
+3D stack
+This is essentially the same code as for Create3DStack but tweaked to work with the cropped data.
+
+# Utility functions from STutility (not exported)
+source("../scripts/global_functions.R")
+
+# Get spatial coordinates
+st.object <- GetStaffli(se.masked)
+
+# Convert spatial coordinates to fit cropped HE image coordinates
+coords <- do.call(rbind, lapply(seq_along(st.object@samplenames), function(i) {
+  s <- st.object@samplenames[i]
+  coords <- subset(st.object[[]], sample == s)[, c("warped_x", "warped_y")]
+  dims.raw <- st.object@dims[[i]][2:3] %>% as.numeric()
+  dims.scaled <- scaled.imdims(st.object)[[i]]
+  sf.xy <- dims.raw[2]/dims.scaled[1]
+  coords <- coords/sf.xy
+  coords$z <- i
+  return(coords)
+}))
+
+# Create "scatter cloud" from HE image
+scatters <- do.call(rbind, lapply(seq_along(st.object@samplenames), function(i) {
+  s <- st.object@samplenames[i]
+  scatter <- scatter_HE(st.object, type = "processed", sample.index = s, maxnum = maxnum, limit = limit, edges = FALSE)
+  scatter$z <- i
+  return(scatter)
+}))
+
+# Assign "cells" to a grid
+max.x = max(coords[, 1])
+min.x = min(coords[, 1])
+max.y = max(coords[, 2])
+min.y = min(coords[, 2])
+res = (max.x - min.x) / nx
+r = raster::raster(xmn = min.x, ymn = min.y, xmx = max.x, ymx = max.y, res = res)
+r[] = 0
+section.input <- rasterize_scatter(scatters, r, nx)
+
+# Store scatter data.frame in Seurat object 
+st.object@scatter.data <- section.input
+se.masked@tools$Staffli <- st.object
+QC
+I must say that the quality metrics look really good. There are slightly higher counts in group1 and group2 which might represent a batch effect but I’m since I don’t know anythong about the tissue it’s hard for me to tell :-)
+
+VlnPlot(se.masked, features = c("nFeature_RNA", "nCount_RNA"), group.by = "labels")
+
+
+Analysis workflow
+Here I just ran a pretty standard Seurat workflow. For dimensionality reduction I used Non-negative Matrix Factorization.
+
+Normalization with SCTransform
+Dimensionality reduction (PCA and NMF)
+UMAP embedding
+Clustering
+se.masked <- se.masked %>% 
+  SCTransform() %>%
+  RunPCA() %>%
+  RunNMF() %>%
+  RunUMAP(reduction = "NMF", dims = 1:20) %>% 
+se.masked <- se.masked %>% 
+  FindNeighbors(reduction = "NMF", dims = 1:20) %>%
+  FindClusters()
+## Computing nearest neighbor graph
+## Computing SNN
+## Modularity Optimizer version 1.3.0 by Ludo Waltman and Nees Jan van Eck
+## 
+## Number of nodes: 1749
+## Number of edges: 49108
+## 
+## Running Louvain algorithm...
+## Maximum modularity in 10 random starts: 0.8091
+## Number of communities: 13
+## Elapsed time: 0 seconds
+Clustering
+Seems like there are some batch specific grouping of spots in UMAP space. Is this to be expected or is it a batch effect?
+
+p1 <- DimPlot(se.masked, group.by = "labels")
+p2 <- DimPlot(se.masked, group.by = "seurat_clusters", label = TRUE, label.size = 8)
+p1 - p2
+
+
+There are also some discrepancies in the spatial distribution of clusters in the different sections.
+
+p1 <- ST.FeaturePlot(se.masked, features = "seurat_clusters", indices = 1, split.labels = T) & theme(plot.title = element_blank(), strip.text = element_blank())
+p2 <- ST.FeaturePlot(se.masked, features = "seurat_clusters", indices = 2, split.labels = T) & theme(plot.title = element_blank(), strip.text = element_blank())
+p3 <- ST.FeaturePlot(se.masked, features = "seurat_clusters", indices = 3, split.labels = T) & theme(plot.title = element_blank(), strip.text = element_blank())
+p4 <- ST.FeaturePlot(se.masked, features = "seurat_clusters", indices = 4, split.labels = T) & theme(plot.title = element_blank(), strip.text = element_blank())
+cowplot::plot_grid(p1, p2, p3, p4, ncol = 4)
+
+
+Integrate with harmony
+If you suspect that you have a batch effect between the sections it could be a good idea to integrate the data using harmony.
+
+se.masked <- RunHarmony(se.masked, group.by.vars = "labels", reduction = "pca", dims.use = 1:30, assay.use = "SCT", verbose = FALSE) %>%
+  RunUMAP(reduction = "harmony", dims = 1:30) %>%
+  FindNeighbors(reduction = "harmony", dims = 1:30) %>%
+  FindClusters()
+## Modularity Optimizer version 1.3.0 by Ludo Waltman and Nees Jan van Eck
+## 
+## Number of nodes: 1749
+## Number of edges: 56361
+## 
+## Running Louvain algorithm...
+## Maximum modularity in 10 random starts: 0.8101
+## Number of communities: 10
+## Elapsed time: 0 seconds
+Custering results after integration with harmony
+
+p1 <- DimPlot(se.masked, group.by = "labels")
+p2 <- DimPlot(se.masked, group.by = "seurat_clusters", label = TRUE, label.size = 8)
+p1 - p2
+
+
+p1 <- ST.FeaturePlot(se.masked, features = "seurat_clusters", indices = 1, split.labels = T) & theme(plot.title = element_blank(), strip.text = element_blank())
+p2 <- ST.FeaturePlot(se.masked, features = "seurat_clusters", indices = 2, split.labels = T) & theme(plot.title = element_blank(), strip.text = element_blank())
+p3 <- ST.FeaturePlot(se.masked, features = "seurat_clusters", indices = 3, split.labels = T) & theme(plot.title = element_blank(), strip.text = element_blank())
+p4 <- ST.FeaturePlot(se.masked, features = "seurat_clusters", indices = 4, split.labels = T) & theme(plot.title = element_blank(), strip.text = element_blank())
+cowplot::plot_grid(p1, p2, p3, p4, ncol = 4)
+
+
+DE analysis
+de.markers <- FindAllMarkers(se.masked, only.pos = TRUE)
+top10 <- de.markers %>%
+  dplyr::filter(p_val_adj < 0.01) %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::top_n(wt = -p_val_adj, n = 10)
+
+DoHeatmap(se.masked, features = top10$gene)
+## Warning in DoHeatmap(se.masked, features = top10$gene): The following features
+## were omitted as they were not found in the scale.data slot for the SCT assay:
+## Zm00001d019069, Zm00001d048772, ribosomal protein S27, Zm00001d038374
+
+
+3D visualization
+Now that we have some marker genes we can try to visualize them in 3D
+
+FeaturePlot3D(se.masked, features = "Zm00001d053156", pts.downsample = 1e5)
+If you don’t want to use the “cell scatter cloud”, you can also just visualize expression at the spot level.
+
+FeaturePlot3D(se.masked, features = "Zm00001d053156", mode = "spots", pt.size = 4, pt.alpha = 0.7)
+Or do some other fancy tricks to color the sections according to similarities in gene expression for example
+
+se.masked <- RunUMAP(se.masked, dims = 1:30, reduction = "harmony", n.components = 3, reduction.name = "umap.3d")
