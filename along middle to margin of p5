@@ -1,4 +1,4 @@
-semi-supervised analysis of P5
+# semi-supervised analysis of P5
 library(STutility)
 library(magick)
 library(dbscan)
