@@ -105,5 +105,10 @@ ldata_cell=ldata.obs.index.tolist()
 ldata_cell=[bc[0:len(bc)-2]for bc in ldata_cell]
 ldata.obs.index=ldata_cell
 
+# subset ldata or adata for merge (here subset ldata for adata)
+adata_cell=adata.obs.index.tolist()
+adata_gene=adata.var.index.tolist()
 
+ldata_cell=ldata.obs.index.tolist()
+ldata_gene=ldata.var.index.tolist()
 
