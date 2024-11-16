@@ -112,3 +112,37 @@ adata_gene=adata.var.index.tolist()
 ldata_cell=ldata.obs.index.tolist()
 ldata_gene=ldata.var.index.tolist()
 
+# if the dimention of ldata different from adata
+inter_cell=list(set(ldata_cell) & set(adata_cell))
+inter_gene=list(set(ldata_gene) & set(adata_gene))
+
+adata_sub=adata[adata.obs.index.isin(inter_cell)]
+adata_sub=adata_sub[:,adata_sub.var.index.isin(inter_gene)]
+
+ldata_sub=ldata[ldata.obs.index.isin(inter_cell)]
+ldata_sub=ldata_sub[:,ldata_sub.var.index.isin(inter_gene)]
+
+adata_sub = scv.utils.merge(adata_sub, ldata_sub)
+
+
+scv.pl.proportions(adata, groupby='celltype_full')
+# pre-process
+scv.pp.filter_and_normalize(adata)
+scv.pp.moments(adata)
+
+# pre-process
+scv.pp.filter_and_normalize(adata)
+scv.pp.moments(adata)
+
+
+# compute velocity
+scv.tl.velocity(adata, mode='stochastic')
+scv.tl.velocity_graph(adata)
+
+scv.pl.velocity_embedding(adata, basis='umap', frameon=False, save='embedding.pdf')
+
+scv.pl.velocity_embedding_grid(adata, basis='umap', color='celltype', save='embedding_grid.pdf', title='', scale=0.25)
+
+scv.pl.velocity_embedding_stream(adata, basis='umap', color=['celltype', 'condition'], save='embedding_stream.pdf', title='')
+
+
