@@ -100,6 +100,10 @@ ldata2.obs.index=barcodes
 ldata1.var_names_make_unique()
 ldata2.var_names_make_unique()
 
+# rewrite obs index of merged loom
+ldata_cell=ldata.obs.index.tolist()
+ldata_cell=[bc[0:len(bc)-2]for bc in ldata_cell]
+ldata.obs.index=ldata_cell
 
 
 
