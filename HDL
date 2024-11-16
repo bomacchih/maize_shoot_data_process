@@ -25,3 +25,36 @@ write.table(
   quote=F,row.names=F,col.names=F
 )
 
+## in python 3.8 with scVelo
+
+import scanpy as sc
+import anndata
+from scipy import io
+from scipy.sparse import coo_matrix, csr_matrix
+import numpy as np
+import os
+import pandas as pd
+
+# load sparse matrix:
+X = io.mmread("counts.mtx")
+
+# create anndata object
+adata = anndata.AnnData(
+    X=X.transpose().tocsr()
+)
+
+# load cell metadata:
+cell_meta = pd.read_csv("metadata.csv")
+
+# load gene names:
+with open("gene_names.csv", 'r') as f:
+    gene_names = f.read().splitlines()
+
+# set anndata observations and index obs by barcodes, var by gene names
+adata.obs = cell_meta
+adata.obs.index = adata.obs['barcode']
+adata.var.index = gene_names
+
+# load dimensional reduction:
+pca = pd.read_csv("pca.csv")
+pca.index = adata.obs.index
