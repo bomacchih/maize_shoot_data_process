@@ -58,3 +58,48 @@ adata.var.index = gene_names
 # load dimensional reduction:
 pca = pd.read_csv("pca.csv")
 pca.index = adata.obs.index
+
+# set pca and umap
+adata.obsm['X_pca'] = pca.to_numpy()
+adata.obsm['X_umap'] = np.vstack((adata.obs['UMAP_1'].to_numpy(), adata.obs['UMAP_2'].to_numpy())).T
+
+# plot a UMAP colored by sampleID to test:
+sc.pl.umap(adata, color=['seurat_clusters'], frameon=False, save=True)
+
+# save dataset as anndata format
+adata.write('my_data.h5ad')
+
+
+# reload dataset
+adata = sc.read_h5ad('my_data.h5ad')
+
+import scvelo as scv
+import scanpy as sc
+import cellrank as cr
+import numpy as np
+import pandas as pd
+import anndata as ad
+
+scv.settings.verbosity = 3
+scv.settings.set_figure_params('scvelo', facecolor='white', dpi=100, frameon=False)
+cr.settings.verbosity = 2
+
+ldata1 = scv.read('cellranger/WT-1/velocyto/WT-1.loom', cache=True)
+ldata2 = scv.read('cellranger/WT-2/velocyto/WT-2.loom', cache=True)
+
+#rewrite barcode to match the ones of adata
+barcodes=[bc.split(':')[1] for bc in ldata1.obs.index.tolist()]
+barcodes=['WT1_'+bc[0:len(bc)-1]+'-1' for bc in barcodes]
+ldata1.obs.index=barcodes
+
+barcodes=[bc.split(':')[1] for bc in ldata2.obs.index.tolist()]
+barcodes=['WT2_'+bc[0:len(bc)-1]+'-1' for bc in barcodes]
+ldata2.obs.index=barcodes
+
+# make variable names unique
+ldata1.var_names_make_unique()
+ldata2.var_names_make_unique()
+
+
+
+
