@@ -1,0 +1,25 @@
+# Extract UMAP embeddings from Seurat
+umap_coordinates <- Embeddings(seurat_obj, reduction = "umap")
+
+# Ensure cell names match between Seurat and Monocle3
+if (!all(rownames(umap_coordinates) %in% colnames(cds))) {
+  stop("Mismatch in cell names between Seurat and Monocle3 datasets!")
+}
+
+# Add the UMAP coordinates to the Monocle3 dataset
+reducedDims(cds)$UMAP <- as.matrix(umap_coordinates)
+
+# Example: Extract "cell_type" property from Seurat metadata
+seurat_metadata <- seurat_obj@meta.data
+cell_type <- seurat_metadata$cell_type
+
+# Ensure cell names match
+names(cell_type) <- rownames(seurat_metadata)
+
+# Add the "cell_type" property to Monocle3
+colData(cds)$cell_type <- cell_type[colnames(cds)]
+
+# Arrange by custom order
+sorted_df <- df %>%
+  mutate(Barcode = factor(Barcode, levels = custom_order)) %>%
+  arrange(Barcode)
