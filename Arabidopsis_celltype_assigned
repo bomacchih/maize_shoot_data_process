@@ -72,3 +72,6 @@ seurat_obj$cell_type <- apply(module_scores, 1, function(x) {
 
 DimPlot(seurat_obj, reduction = "umap", group.by = "cell_type", label = TRUE)
 
+
+
+
