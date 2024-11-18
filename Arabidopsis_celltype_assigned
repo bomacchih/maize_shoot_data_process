@@ -1,0 +1,74 @@
+# cell type assigned
+
+marker_genes <- list(
+    "Epidermis" = c("AT1G27950"),
+    "Vasculature" = c("AT5G12140"),
+    "Mesophyll" = c("AT4G12970"),
+    "PC" = c("AT1G54040"),
+    "Abaxial PC" = c("AT2G26580"),
+    "Adaxial PC" = c("AT5G13930"),
+    "GC" = c("AT1G08810", "AT2G46720", "AT5G53210"),
+    "Spongy" = c("AT2G45190"),
+    "Palisade" = c("AT3G17185"),
+    "Late S phase" = c("AT1G18370", "AT5G54640"),
+    "Early S phase" = c("AT1G07370", "AT2G29570"),
+    "G2/M phase" = c("AT1G18370"),
+    "BS" = c("AT1G77990"),
+    "PP1" = c("AT3G48740", "AT5G23660"),
+    "Companion cell" = c("AT5G57350", "AT1G79430"),
+    "SE" = c("AT3G01680", "AT3G01670"),
+    "Xylem" = c("AT5G60490", "AT4G32880", "AT5G19530"),
+    "Cambium" = c("AT5G61480", "AT1G46480"),
+    "PP2" = c("AT4G13770"),
+    "MI" = c("AT5G26000", "AT5G25980")
+)
+
+for (cell_type in names(marker_genes)) {
+    WT_s <- AddModuleScore(
+        object = WT_s,
+        features = list(marker_genes[[cell_type]]),
+        name = cell_type
+    )
+}
+
+# Add module scores to metadata
+module_scores <- as.data.frame(seurat_obj@meta.data)
+
+# Find all markers for each cluster
+cluster_markers <- FindAllMarkers(seurat_obj, only.pos = TRUE)
+
+cluster_cell_types <- cluster_markers %>%
+    group_by(cluster) %>%
+    summarise(
+        assigned_cell_type = case_when(
+            any(gene %in% marker_genes[["Abaxial PC"]]) ~ "Ab_PC",
+            any(gene %in% marker_genes[["Adaxial PC"]]) ~ "Ad_PC",
+            any(gene %in% marker_genes[["GC"]]) ~ "GC",
+            any(gene %in% marker_genes[["Spongy"]]) ~ "Spongy",
+            any(gene %in% marker_genes[["Palisade"]]) ~ "Palisade",
+            any(gene %in% marker_genes[["BC"]]) ~ "BC",
+            any(gene %in% marker_genes[["PP1"]]) ~ "PP1",
+            any(gene %in% marker_genes[["Companion cell"]]) ~ "CompCell",
+            any(gene %in% marker_genes[["SE"]]) ~ "SE",
+            any(gene %in% marker_genes[["Xylem"]]) ~ "Xylem",
+            any(gene %in% marker_genes[["Cambium"]]) ~ "Cambium",
+            any(gene %in% marker_genes[["PP2"]]) ~ "PP2",
+            any(gene %in% marker_genes[["MI"]]) ~ "MI",
+                        TRUE ~ "Unknown"
+        )
+    )
+
+# Assign cell types to clusters
+seurat_obj$cell_type <- plyr::mapvalues(
+  x = seurat_obj$seurat_clusters, # Cluster IDs
+  from = cluster_cell_types$cluster, # Cluster IDs
+  to = cluster_cell_types$assigned_cell_type # Assigned cell types
+)
+
+# Alternatively, assign by maximum score
+seurat_obj$cell_type <- apply(module_scores, 1, function(x) {
+  names(which.max(x))
+})
+
+DimPlot(seurat_obj, reduction = "umap", group.by = "cell_type", label = TRUE)
+
