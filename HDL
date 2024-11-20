@@ -17,7 +17,7 @@ counts_matrix <- GetAssayData(seurat_obj, assay='RNA', slot='counts')
 writeMM(counts_matrix, file=paste0(out_data_dir, 'counts.mtx'))
 
 # write dimesnionality reduction matrix, in this example case pca matrix
-write.csv(seurat_obj@reductions$pca@cell.embeddings, file='pca.csv'), quote=F, row.names=F)
+write.csv(seurat_obj@reductions$pca@cell.embeddings, file='pca.csv', quote=F, row.names=F)
 
 # write gene names
 write.table(
@@ -30,7 +30,7 @@ write.table(
 import scanpy as sc
 import anndata
 from scipy import io
-from scipy.sparse import coo_matrix, csr_matrix
+from scipy.sparse import coo_matrix, csr_matrixㄍㄩㄛ
 import numpy as np
 import os
 import pandas as pd
