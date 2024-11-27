@@ -87,6 +87,8 @@ cr.settings.verbosity = 2
 ldata1 = scv.read('cellranger/WT-1/velocyto/WT-1.loom', cache=True)
 ldata2 = scv.read('cellranger/WT-2/velocyto/WT-2.loom', cache=True)
 
+ldata = ldata1.concatenate([ldata2])
+
 #rewrite barcode to match the ones of adata
 barcodes=[bc.split(':')[1] for bc in ldata1.obs.index.tolist()]
 barcodes=['WT1_'+bc[0:len(bc)-1]+'-1' for bc in barcodes]
