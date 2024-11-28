@@ -131,9 +131,6 @@ adata_sub = scv.utils.merge(adata_sub, ldata_sub)
 
 
 scv.pl.proportions(adata, groupby='celltype_full')
-# pre-process
-scv.pp.filter_and_normalize(adata)
-scv.pp.moments(adata)
 
 # pre-process
 scv.pp.filter_and_normalize(adata)
