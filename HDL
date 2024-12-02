@@ -130,12 +130,12 @@ ldata_sub=ldata_sub[:,ldata_sub.var.index.isin(inter_gene)]
 adata_sub = scv.utils.merge(adata_sub, ldata_sub)
 
 
-scv.pl.proportions(adata, groupby='celltype_full', save="proportions_plot.png")
+scv.pl.proportions(adata, groupby='celltype_full')
 
 # pre-process
 scv.pp.filter_and_normalize(adata)
 scv.pp.moments(adata)
-
+scv.
 
 # compute velocity
 scv.tl.velocity(adata, mode='stochastic')
