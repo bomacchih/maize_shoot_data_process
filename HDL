@@ -130,7 +130,7 @@ ldata_sub=ldata_sub[:,ldata_sub.var.index.isin(inter_gene)]
 adata_sub = scv.utils.merge(adata_sub, ldata_sub)
 
 
-scv.pl.proportions(adata, groupby='celltype_full')
+scv.pl.proportions(adata, groupby='celltype_full', save="proportions_plot.png")
 
 # pre-process
 scv.pp.filter_and_normalize(adata)
