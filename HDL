@@ -64,7 +64,7 @@ adata.obsm['X_pca'] = pca.to_numpy()
 adata.obsm['X_umap'] = np.vstack((adata.obs['UMAP_1'].to_numpy(), adata.obs['UMAP_2'].to_numpy())).T
 
 # plot a UMAP colored by sampleID to test:
-sc.pl.umap(adata, color=['seurat_clusters'], frameon=False, save=True)
+sc.pl.umap(adata, color=['seurat_clusters'], frameon=False, save='file.png')
 
 # save dataset as anndata format
 adata.write('my_data.h5ad')
