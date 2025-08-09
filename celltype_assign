@@ -94,10 +94,12 @@ plots <- lapply(cell_types, function(ct) {
 
 # no library(patchwork) needed
 
-png("sc_merged_filter_SCT_inte_celltype_scina.png", width=4000, height=2000, res=300)
-
 combined <- patchwork::wrap_plots(plots, ncol = 4) +
   patchwork::plot_annotation(title = "UMAP Highlight by Cell Type")
+
+
+png("sc_merged_filter_SCT_inte_celltype_scina.png", width=4000, height=2000, res=300)
+
 combined
 
 dev.off()
