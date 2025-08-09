@@ -42,3 +42,31 @@ scina_res <- SCINA(
   allow_unknown = TRUE
 )
 
+# Get all unique cell types
+cell_types <- unique(seurat_obj$predicted_cell_type)
+
+# Make individual plots
+plots <- lapply(cell_types, function(ct) {
+  DimPlot(
+    seurat_obj,
+    group.by = "predicted_cell_type",
+    cells.highlight = WhichCells(seurat_obj, ident = ct),
+    cols.highlight = "red",
+    cols = "grey80",
+    sizes.highlight = 1.2,
+    pt.size = 0.5
+  ) +
+    ggtitle(ct) +
+    theme(legend.position = "none")
+})
+
+# no library(patchwork) needed
+
+png("sc_merged_filter_SCT_inte_celltype_scina.png", width=4000, height=2000, res=300)
+
+combined <- patchwork::wrap_plots(plots, ncol = 4) +
+  patchwork::plot_annotation(title = "UMAP Highlight by Cell Type")
+combined
+
+dev.off()
+
