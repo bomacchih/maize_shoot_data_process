@@ -1,0 +1,44 @@
+## Choose assay/slot for SCINA (v1.2.0 works well with RNA/data)
+DefaultAssay(seurat_obj) <- "RNA"
+expr <- as.matrix(GetAssayData(seurat_obj, assay = "RNA", slot = "data"))  # genes x cells
+
+# Basic sanity
+expr[!is.finite(expr)] <- 0
+stopifnot(!any(is.na(expr)))
+stopifnot(!is.null(rownames(expr)))
+
+# Build: cell_type -> vector of markers
+marker_list <- split(marker_df$gene_id, marker_df$cell_type)
+
+# Keep only markers present in object; drop NAs/empties/dups
+marker_list <- lapply(marker_list, function(v){
+  v <- unique(v[!is.na(v) & nzchar(v)])
+  intersect(v, rownames(expr))
+})
+
+# (Optional) remove genes shared by >1 type if you plan to rm_overlap=TRUE
+dup_tab  <- table(unlist(marker_list))
+shared   <- names(dup_tab[dup_tab > 1])
+marker_list_disjoint <- lapply(marker_list, setdiff, y = shared)
+
+# Keep types with >= 2 markers (SCINA tends to fail with <2)
+marker_list2 <- marker_list_disjoint
+marker_list2 <- marker_list2[sapply(marker_list2, length) >= 2]
+
+# Final check
+print(sapply(marker_list2, length))
+stopifnot(length(marker_list2) > 0)
+
+library(SCINA)
+set.seed(1)  # v1.2.0 has no seed arg; set globally
+
+scina_res <- SCINA(
+  expr = expr,             # OK to pass positionally or named; older builds ignore the name
+  signatures = marker_list2,
+  max_iter = 100,
+  convergence_n = 10,
+  sensitivity_cutoff = 1,
+  rm_overlap = TRUE,        # set FALSE if you did not remove shared markers above
+  allow_unknown = TRUE
+)
+
