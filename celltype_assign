@@ -43,6 +43,37 @@ scina_res <- SCINA(
   allow_unknown = TRUE
 )
 
+# expr must be the exact matrix you passed to SCINA (genes x cells)
+# Make sure its columns match your Seurat object
+stopifnot(all(colnames(expr) %in% colnames(seurat_obj)))
+
+# 1) Name the SCINA labels with the expr column names
+labels_scina <- scina_res$cell_labels
+if (is.null(names(labels_scina))) {
+  names(labels_scina) <- colnames(expr)
+}
+
+# 2) Map to Seurat's cell order and add to meta.data
+seurat_obj$celltype_scina <- labels_scina[colnames(seurat_obj)]
+
+# 3) (Optional) probabilities — ensure orientation, then attach
+prob_scina <- scina_res$probabilities
+# Some builds return types x cells; others cells x types. Fix if needed:
+if (ncol(prob_scina) == ncol(expr)) {
+  # assume rows = types, cols = cells  → transpose to cells x types
+  prob_scina <- t(prob_scina)
+}
+# Now rows should be cells
+rownames(prob_scina) <- colnames(expr)
+prob_scina <- prob_scina[colnames(seurat_obj), , drop = FALSE]
+colnames(prob_scina) <- paste0("SCINA_", colnames(prob_scina))
+seurat_obj <- AddMetaData(seurat_obj, as.data.frame(prob_scina))
+
+# 4) Quick sanity checks
+table(seurat_obj$celltype_scina)
+stopifnot(!any(is.na(seurat_obj$celltype_scina[colnames(expr)])))  # should be all assigned
+
+
 # Get all unique cell types
 cell_types <- unique(seurat_obj$predicted_cell_type)
 
