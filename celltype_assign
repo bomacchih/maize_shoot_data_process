@@ -37,6 +37,7 @@ scina_res <- SCINA(
   signatures = marker_list2,
   max_iter = 100,
   convergence_n = 10,
+  convergence_rate = 0.999,
   sensitivity_cutoff = 1,
   rm_overlap = TRUE,        # set FALSE if you did not remove shared markers above
   allow_unknown = TRUE
