@@ -1,0 +1,17 @@
+library(Seurat)
+library(Matrix)
+
+# pick the assay that contains raw counts (usually "RNA")
+DefaultAssay(pbmc) <- "RNA"
+
+# 1) Filter genes detected in >= 3 cells  (equivalent to min.cells = 3)
+cnt <- GetAssayData(pbmc, slot = "counts")
+keep_genes <- Matrix::rowSums(cnt > 0) >= 3
+pbmc <- pbmc[keep_genes, ]
+
+# 2) Make sure per-cell QC columns exist
+pbmc[["nFeature_RNA"]] <- Matrix::colSums(cnt[keep_genes, ] > 0)
+pbmc[["nCount_RNA"]]   <- Matrix::colSums(cnt[keep_genes, ])
+
+# 3) Filter cells with >= 200 detected genes (equivalent to min.features = 200)
+pbmc <- subset(pbmc, subset = nFeature_RNA >= 200)
