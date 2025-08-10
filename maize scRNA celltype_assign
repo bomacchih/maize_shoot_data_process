@@ -1,6 +1,6 @@
 ## Choose assay/slot for SCINA (v1.2.0 works well with RNA/data)
-DefaultAssay(seurat_obj) <- "RNA"
-expr <- as.matrix(GetAssayData(seurat_obj, assay = "RNA", slot = "data"))  # genes x cells
+DefaultAssay(seurat_obj) <- "SCT"
+expr <- as.matrix(GetAssayData(seurat_obj, assay = "SCT", slot = "data"))  # genes x cells
 
 # Basic sanity
 expr[!is.finite(expr)] <- 0
