@@ -1,0 +1,54 @@
+library(Seurat)
+library(SingleCellExperiment)
+
+# seurat_sc: your Seurat v5 object with cell-type labels in seurat_sc$celltype
+DefaultAssay(seurat_sc) <- "RNA"  # or your RNA-like assay
+
+sce_ref <- as.SingleCellExperiment(seurat_sc)  # keeps counts & colData
+
+# make sure cell-type labels are present for SPOTlight grouping
+if (is.null(colData(sce_ref)$celltype)) {
+  colData(sce_ref)$celltype <- seurat_sc$celltype
+}
+
+library(SpatialExperiment)
+library(Seurat)
+
+# seurat_vis: your Seurat v5 spatial object
+#  - For Visium v1/v2 (spots): assay is often "RNA"
+#  - For Visium HD: multiple binnings (e.g., "bins8", "bins16"); pick one
+
+assay_name <- if ("RNA" %in% Assays(seurat_vis)) "RNA" else DefaultAssay(seurat_vis)
+counts_mtx <- GetAssayData(seurat_vis, assay = assay_name, slot = "counts")
+
+# Get 2D spot/bin coordinates
+coords <- GetTissueCoordinates(seurat_vis)  # returns imagerow/imagecol by image
+# If multiple images/capture areas, this already includes image context in rownames
+# Make sure ordering matches the count matrix columns
+coords <- coords[colnames(counts_mtx), , drop = FALSE]
+
+# Build SPE
+spe_vis <- SpatialExperiment(
+  assays = list(counts = counts_mtx),
+  colData = DataFrame(seurat_vis@meta.data[colnames(counts_mtx), , drop = FALSE]),
+  spatialCoords = as.matrix(coords[, c("imagerow", "imagecol")])
+)
+
+
+library(SPOTlight)
+
+# group labels used to seed NMF (here, "celltype" from scRNA colData)
+groups <- colData(sce_ref)$celltype
+
+# Deconvolution (matrix or SCE inputs both supported)
+res <- SPOTlight(
+  x = sce_ref,              # scRNA (SCE or matrix)
+  y = sce_ref_from_vis <- as(spe_vis, "SingleCellExperiment"),  # mixture as SCE
+  groups = groups,
+  assay = "counts",         # use raw counts
+  slot  = "counts",
+  verbose = TRUE
+)
+
+# Extract proportion matrix (spots/bins × cell types)
+prop <- res$proportions
