@@ -48,6 +48,7 @@ dec <- modelGeneVar(sce_ref, subset.row = genes)
 plot(dec$mean, dec$total, xlab = "Mean log-expression", ylab = "Variance")
 curve(metadata(dec)$trend(x), col = "blue", add = TRUE)
 
+hvg<-getTopHVGs(dec, n=3000)
 
 
 
