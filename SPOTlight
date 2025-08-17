@@ -34,6 +34,25 @@ spe_vis <- SpatialExperiment(
   spatialCoords = as.matrix(coords[, c("imagerow", "imagecol")])
 )
 
+sce_ref <- logNormCounts(sce_ref)
+
+# Get all rownames
+all_genes <- rownames(sce)
+
+# Exclude ribosomal (RpL or RpS), mitochondrial, and chlorophyll genes
+genes<- !(grepl("^Rp[l|s]", all_genes) |
+                   all_genes %in% MT_genes_list |
+                   all_genes %in% Pltd_genes_list)
+
+dec <- modelGeneVar(sce_ref, subset.row = genes)
+plot(dec$mean, dec$total, xlab = "Mean log-expression", ylab = "Variance")
+curve(metadata(dec)$trend(x), col = "blue", add = TRUE)
+
+
+
+
+
+
 
 library(SPOTlight)
 
@@ -52,3 +71,6 @@ res <- SPOTlight(
 
 # Extract proportion matrix (spots/bins × cell types)
 prop <- res$proportions
+dec <- modelGeneVar(sce, subset.row = genes)
+plot(dec$mean, dec$total, xlab = "Mean log-expression", ylab = "Variance")
+curve(metadata(dec)$trend(x), col = "blue", add = TRUE)
