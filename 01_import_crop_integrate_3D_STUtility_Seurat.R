@@ -21,8 +21,8 @@ Manual selection
 Here I just manually anntoated the four section as group1-group4.
 
 se <- ManualAnnotation(se)
-Find “crop windows”
-We can define the “crop windows” by extracting the min/max x and y coordinate values for eachs section.
+#Find “crop windows”
+#We can define the “crop windows” by extracting the min/max x and y coordinate values for eachs section.
 
 coords <- GetStaffli(se)@meta.data[, c("pixel_x", "pixel_y")]
 coords$group <- se$labels
@@ -35,8 +35,8 @@ crop.geoms <- setNames(lapply(paste0("group", 1:4), function(grp) {
   wh <- apply(minxy, 2, diff)
   geom <- paste0(wh[1], "x", wh[2], "+", minxy[1, 1], "+", minxy[1, 2])
 }), nm = c("1", "1", "1", "1"))
-Crop data
-Here’s the actual cropping step. If you want to use the HE image in higher resolution you will need to use the raw HE images, or at least a version of the HE images which has a higher resolution than “tissue_hires_image.png” from the spaceranger output folder. You can check the “crop_data” tutorial on the STutility web site if you’re interested.
+#Crop data
+#Here’s the actual cropping step. If you want to use the HE image in higher resolution you will need to use the raw HE images, or at least a version of the HE images which has a higher resolution than “tissue_hires_image.png” from the spaceranger output folder. You can check the “crop_data” tutorial on the STutility web site if you’re interested.
 
 se <- LoadImages(se, time.resolve = FALSE)
 
@@ -48,7 +48,7 @@ se.cropped.list <- lapply(seq_along(crop.geoms), function(i) {
 })
 
 se.merged <- MergeSTData(x = se.cropped.list[[1]], y = se.cropped.list[2:4])
-Mask images
+#Mask images
 se.masked <- readRDS("../R_objects/se.masked")
 msk.fkn <- function(im) {
   im <- imager::grayscale(im)
@@ -63,12 +63,12 @@ msk.fkn <- function(im) {
 }
 
 se.masked <- MaskImages(se.merged, custom.msk.fkn = msk.fkn, verbose = TRUE)
-Align images
-here I aligned the sections manually. I have no idea if this was done correctly :-)
+#Align images
+#here I aligned the sections manually. I have no idea if this was done correctly :-)
 
 se.masked <- ManualAlignImages(se.masked)
-3D stack
-This is essentially the same code as for Create3DStack but tweaked to work with the cropped data.
+#3D stack
+#This is essentially the same code as for Create3DStack but tweaked to work with the cropped data.
 
 # Utility functions from STutility (not exported)
 source("../scripts/global_functions.R")
@@ -109,19 +109,19 @@ section.input <- rasterize_scatter(scatters, r, nx)
 # Store scatter data.frame in Seurat object 
 st.object@scatter.data <- section.input
 se.masked@tools$Staffli <- st.object
-QC
-I must say that the quality metrics look really good. There are slightly higher counts in group1 and group2 which might represent a batch effect but I’m since I don’t know anythong about the tissue it’s hard for me to tell :-)
+#QC
+#I must say that the quality metrics look really good. There are slightly higher counts in group1 and group2 which might represent a batch effect but I’m since I don’t know anythong about the tissue it’s hard for me to tell :-)
 
 VlnPlot(se.masked, features = c("nFeature_RNA", "nCount_RNA"), group.by = "labels")
 
 
-Analysis workflow
-Here I just ran a pretty standard Seurat workflow. For dimensionality reduction I used Non-negative Matrix Factorization.
+#Analysis workflow
+#Here I just ran a pretty standard Seurat workflow. For dimensionality reduction I used Non-negative Matrix Factorization.
 
-Normalization with SCTransform
-Dimensionality reduction (PCA and NMF)
-UMAP embedding
-Clustering
+#Normalization with SCTransform
+#Dimensionality reduction (PCA and NMF)
+#UMAP embedding
+#Clustering
 se.masked <- se.masked %>% 
   SCTransform() %>%
   RunPCA() %>%
@@ -141,15 +141,15 @@ se.masked <- se.masked %>%
 ## Maximum modularity in 10 random starts: 0.8091
 ## Number of communities: 13
 ## Elapsed time: 0 seconds
-Clustering
-Seems like there are some batch specific grouping of spots in UMAP space. Is this to be expected or is it a batch effect?
+#Clustering
+#Seems like there are some batch specific grouping of spots in UMAP space. Is this to be expected or is it a batch effect?
 
 p1 <- DimPlot(se.masked, group.by = "labels")
 p2 <- DimPlot(se.masked, group.by = "seurat_clusters", label = TRUE, label.size = 8)
 p1 - p2
 
 
-There are also some discrepancies in the spatial distribution of clusters in the different sections.
+#There are also some discrepancies in the spatial distribution of clusters in the different sections.
 
 p1 <- ST.FeaturePlot(se.masked, features = "seurat_clusters", indices = 1, split.labels = T) & theme(plot.title = element_blank(), strip.text = element_blank())
 p2 <- ST.FeaturePlot(se.masked, features = "seurat_clusters", indices = 2, split.labels = T) & theme(plot.title = element_blank(), strip.text = element_blank())
@@ -158,8 +158,8 @@ p4 <- ST.FeaturePlot(se.masked, features = "seurat_clusters", indices = 4, split
 cowplot::plot_grid(p1, p2, p3, p4, ncol = 4)
 
 
-Integrate with harmony
-If you suspect that you have a batch effect between the sections it could be a good idea to integrate the data using harmony.
+#Integrate with harmony
+#If you suspect that you have a batch effect between the sections it could be a good idea to integrate the data using harmony.
 
 se.masked <- RunHarmony(se.masked, group.by.vars = "labels", reduction = "pca", dims.use = 1:30, assay.use = "SCT", verbose = FALSE) %>%
   RunUMAP(reduction = "harmony", dims = 1:30) %>%
@@ -174,7 +174,7 @@ se.masked <- RunHarmony(se.masked, group.by.vars = "labels", reduction = "pca", 
 ## Maximum modularity in 10 random starts: 0.8101
 ## Number of communities: 10
 ## Elapsed time: 0 seconds
-Custering results after integration with harmony
+#Custering results after integration with harmony
 
 p1 <- DimPlot(se.masked, group.by = "labels")
 p2 <- DimPlot(se.masked, group.by = "seurat_clusters", label = TRUE, label.size = 8)
@@ -188,7 +188,7 @@ p4 <- ST.FeaturePlot(se.masked, features = "seurat_clusters", indices = 4, split
 cowplot::plot_grid(p1, p2, p3, p4, ncol = 4)
 
 
-DE analysis
+#DE analysis
 de.markers <- FindAllMarkers(se.masked, only.pos = TRUE)
 top10 <- de.markers %>%
   dplyr::filter(p_val_adj < 0.01) %>%
@@ -201,13 +201,13 @@ DoHeatmap(se.masked, features = top10$gene)
 ## Zm00001d019069, Zm00001d048772, ribosomal protein S27, Zm00001d038374
 
 
-3D visualization
-Now that we have some marker genes we can try to visualize them in 3D
+#3D visualization
+#Now that we have some marker genes we can try to visualize them in 3D
 
 FeaturePlot3D(se.masked, features = "Zm00001d053156", pts.downsample = 1e5)
-If you don’t want to use the “cell scatter cloud”, you can also just visualize expression at the spot level.
+#If you don’t want to use the “cell scatter cloud”, you can also just visualize expression at the spot level.
 
 FeaturePlot3D(se.masked, features = "Zm00001d053156", mode = "spots", pt.size = 4, pt.alpha = 0.7)
-Or do some other fancy tricks to color the sections according to similarities in gene expression for example
+#Or do some other fancy tricks to color the sections according to similarities in gene expression for example
 
 se.masked <- RunUMAP(se.masked, dims = 1:30, reduction = "harmony", n.components = 3, reduction.name = "umap.3d")
