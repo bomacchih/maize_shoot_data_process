@@ -1,0 +1,16 @@
+library(Seurat)
+library(magrittr)
+library(imager)
+library(EBImage)
+library(STutility)
+library(magrittr)
+library(dplyr)
+library(harmony)
+samples <- "c:/Users/li-wu/Desktop/STU_samples/crop_test/VR03_1/filtered_feature_bc_matrix.h5"
+imgs <- "c:/Users/li-wu/Desktop/STU_samples/crop_test/VR03_1/tissue_hires_image.png"
+spotfiles <- "c:/Users/li-wu/Desktop/STU_samples/crop_test/VR03_1/scalefactors_json.json"
+json <- "c:/Users/li-wu/Desktop/STU_samples/crop_test/VR03_1/scalefactors_json.json"
+
+infoTable <- data.frame(samples, imgs, spotfiles, json)
+
+se <- InputFromTable(infoTable)
