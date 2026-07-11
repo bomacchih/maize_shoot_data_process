@@ -1,0 +1,9 @@
+spaceranger count --id=sample345 \ #Output directory
+                  --transcriptome=/home/jdoe/refdata/GRCh38-2020-A \ #Path to Reference
+                  --fastqs=/home/jdoe/runs/HAWT7ADXX/outs/fastq_path \ #Path to FASTQs
+                  --sample=mysample \ #Sample name from FASTQ filename
+                  --image=/home/jdoe/runs/images/sample345.tiff \ #Path to brightfield image
+                  --slide=V19J01-123 \ #Slide ID
+                  --area=A1 \ #Capture area
+                  --localcores=8 \ #Allowed cores in localmode
+                  --localmem=64  #Allowed memory (GB) in localmode
