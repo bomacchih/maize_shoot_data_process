@@ -1,3 +1,7 @@
+# Prepare a reference for use with 10x analysis software. Requires a GTF and FASTA.
+spaceranger mkref [OPTIONS] --genome <GENOME_NAMES> --fasta <FASTA_FILES> --genes <GTF_FILES>
+
+#Count gene expression and protein expression reads from a single capture area.
 spaceranger count --id=sample345 \ #Output directory
                   --transcriptome=/home/jdoe/refdata/GRCh38-2020-A \ #Path to Reference
                   --fastqs=/home/jdoe/runs/HAWT7ADXX/outs/fastq_path \ #Path to FASTQs
