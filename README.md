@@ -130,18 +130,17 @@ spaceranger_count_output/
 
 ### Metadata
 
-A sample metadata table is recommended. Example columns:
+A spot annotation in meta.data
 
-| Column | Description |
+| Metadata column | Description |
 |---|---|
-| `sample_id` | Biological replicate or library ID |
-| `capture_area` | Visium capture area ID |
-| `section_id` | Section number after section splitting |
-| `section_order` | Serial order along the proximal–distal axis |
-| `domain` | Anatomical domain label |
-| `image_path` | Path to tissue image |
-| `matrix_path` | Path to feature-barcode matrix |
-| `scalefactor_path` | Path to scalefactors JSON file |
+| `spot_id` | Unique spot identifier stored as the row name of the Seurat metadata table. |
+| `orig.ident` | Original dataset identity assigned when the Seurat object was created. |
+| `sample_id` | Identifier combining the biological sample and section, such as `UL01_S2`. |
+| `sample` | Biological sample identifier, such as `UL01`, `UL02`, or `VR01`. |
+| `section` | Section identifier within a sample, such as `Section1` or `Section2`. |
+| `labels` | Original section label assigned during section annotation. This may duplicate the information in `section`. |
+| `domains` | Manually annotated anatomical domain. The displayed levels are `SAM`, `P1_P2`, `P3`, `P4`, and `P5`. |
 
 ---
 
