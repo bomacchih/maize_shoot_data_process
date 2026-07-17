@@ -1,1 +1,8 @@
 
+
+# Loupe Browser 9 was used to manually annotate section identities and structural domains.
+
+# Custom groups and clusters were defined, and the spot barcodes and corresponding annotations were then exported.
+
+# The exported annotations can be imported into the Seurat object's meta.data table by matching spot barcodes.
+
