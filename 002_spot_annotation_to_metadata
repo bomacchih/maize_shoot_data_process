@@ -1,8 +1,54 @@
-
-
 # Loupe Browser 9 was used to manually annotate section identities and structural domains.
+# Custom groups and clusters were defined, and spot barcodes with their corresponding annotations were exported as CSV files.
+# The exported barcode-annotation tables were then imported into the Seurat object's meta.data by matching Loupe spot barcodes to Seurat spot barcodes.
 
-# Custom groups and clusters were defined, and the spot barcodes and corresponding annotations were then exported.
+library(Seurat)
+library(dplyr)
+library(readr)
+library(stringr)
 
-# The exported annotations can be imported into the Seurat object's meta.data table by matching spot barcodes.
+# Load barcode annotation table exported from Loupe Browser
+anno <- read_csv("loupe_barcode_annotations.csv")
 
+# Inspect columns
+print(colnames(anno))
+head(anno)
+
+# Define the barcode column manually
+barcode_col <- "Barcode"      # change if needed, e.g. "barcode", "Spot Barcode"
+
+# Define annotation columns to import
+annotation_cols <- c("section", "domains")   # change based on your Loupe export
+
+# Keep only barcode and annotation columns
+anno_sub <- anno %>%
+  select(all_of(c(barcode_col, annotation_cols))) %>%
+  rename(barcode = all_of(barcode_col))
+
+# Convert to data frame
+anno_sub <- as.data.frame(anno_sub)
+
+# Make sure barcodes are character strings
+anno_sub$barcode <- as.character(anno_sub$barcode)
+
+# Optional: remove duplicated barcodes
+anno_sub <- anno_sub[!duplicated(anno_sub$barcode), ]
+
+# Set barcode as row name
+rownames(anno_sub) <- anno_sub$barcode
+
+# Check barcode matching
+common_barcodes <- intersect(rownames(seurat_obj@meta.data), rownames(anno_sub))
+
+cat("Number of matched barcodes:", length(common_barcodes), "\n")
+cat("Number of Seurat spots:", nrow(seurat_obj@meta.data), "\n")
+cat("Number of Loupe annotated spots:", nrow(anno_sub), "\n")
+
+# Add each annotation column to Seurat meta.data
+for (col in annotation_cols) {
+  seurat_obj@meta.data[common_barcodes, col] <- anno_sub[common_barcodes, col]
+}
+
+# Check imported annotations
+table(seurat_obj$section, useNA = "ifany")
+table(seurat_obj$domains, useNA = "ifany")
